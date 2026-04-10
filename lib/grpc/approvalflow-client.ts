@@ -10,6 +10,7 @@ import {
   fixtureListApprovalFlowBindings,
   fixtureListApprovalFlows,
   fixturePublishApprovalFlow,
+  fixtureSimulateApprovalFlow,
   fixtureUpdateApprovalFlowDraft,
   fixtureUpsertApprovalFlowBinding,
   fixtureValidateApprovalFlow,
@@ -545,6 +546,10 @@ export async function simulateApprovalFlow(
     requesterEmployeeId?: string;
   }
 ) {
+  if (isE2EFixtureMode()) {
+    return fixtureSimulateApprovalFlow(session, payload);
+  }
+
   const response = await invokeUnary<unknown>(
     getApprovalFlowClient(),
     "frontendSimulateApprovalFlow",

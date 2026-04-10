@@ -39,6 +39,13 @@ export type ApprovalFlowBindingFormState = {
   conditionsJson: string;
 };
 
+export type ApprovalFlowSimulationFormState = {
+  shouldRun: boolean;
+  requesterId: string;
+  requesterEmployeeId: string;
+  fieldsJson: string;
+};
+
 export const DEFAULT_APPROVAL_FLOW_GRAPH_JSON = JSON.stringify(
   {
     nodes: [
@@ -105,6 +112,15 @@ export const DEFAULT_APPROVAL_FLOW_BINDING_FORM_STATE: ApprovalFlowBindingFormSt
   isDefault: false,
   isActive: true,
   conditionsJson: ""
+};
+
+export const DEFAULT_APPROVAL_FLOW_SIMULATION_FORM_STATE: ApprovalFlowSimulationFormState = {
+  shouldRun: false,
+  requesterId: "",
+  requesterEmployeeId: "",
+  fieldsJson: defaultApprovalFlowSimulationFieldsJson(
+    "APPROVAL_FLOW_TARGET_TYPE_LEAVE_REQUEST"
+  )
 };
 
 export function parseApprovalFlowListState(
@@ -188,6 +204,10 @@ export function buildApprovalFlowDetailPath(
     bindingIsDefault?: string;
     bindingIsActive?: string;
     bindingConditionsJson?: string;
+    simulate?: string;
+    simulationRequesterId?: string;
+    simulationRequesterEmployeeId?: string;
+    simulationFieldsJson?: string;
   } = {}
 ) {
   const search = new URLSearchParams();
@@ -227,6 +247,18 @@ export function buildApprovalFlowDetailPath(
   }
   if (input.bindingConditionsJson) {
     search.set("bindingConditionsJson", input.bindingConditionsJson);
+  }
+  if (input.simulate) {
+    search.set("simulate", input.simulate);
+  }
+  if (input.simulationRequesterId) {
+    search.set("simulationRequesterId", input.simulationRequesterId);
+  }
+  if (input.simulationRequesterEmployeeId) {
+    search.set("simulationRequesterEmployeeId", input.simulationRequesterEmployeeId);
+  }
+  if (input.simulationFieldsJson) {
+    search.set("simulationFieldsJson", input.simulationFieldsJson);
   }
 
   const query = search.toString();
@@ -319,6 +351,80 @@ export function readApprovalFlowBindingFormState(
       singleValue(params.bindingConditionsJson) ??
       fallback.conditionsJson ??
       DEFAULT_APPROVAL_FLOW_BINDING_FORM_STATE.conditionsJson
+  };
+}
+
+export function defaultApprovalFlowSimulationFieldsJson(targetType: ApprovalFlowTargetType) {
+  switch (targetType) {
+    case "APPROVAL_FLOW_TARGET_TYPE_CLAIM":
+      return JSON.stringify(
+        {
+          targetType: "claim",
+          country: "MY",
+          categoryCode: "travel",
+          amountCents: 12500
+        },
+        null,
+        2
+      );
+    case "APPROVAL_FLOW_TARGET_TYPE_OVERTIME":
+      return JSON.stringify(
+        {
+          targetType: "overtime",
+          country: "MY",
+          hours: 3,
+          site: "KL"
+        },
+        null,
+        2
+      );
+    case "APPROVAL_FLOW_TARGET_TYPE_EMPLOYEE_CHANGE":
+      return JSON.stringify(
+        {
+          targetType: "employee_change",
+          country: "MY",
+          changeType: "manager_change",
+          departmentCode: "OPS"
+        },
+        null,
+        2
+      );
+    case "APPROVAL_FLOW_TARGET_TYPE_LEAVE_REQUEST":
+    default:
+      return JSON.stringify(
+        {
+          targetType: "leave_request",
+          country: "MY",
+          leaveTypeCode: "annual",
+          durationDays: 2
+        },
+        null,
+        2
+      );
+  }
+}
+
+export function readApprovalFlowSimulationFormState(
+  params: Record<string, string | string[] | undefined>,
+  fallback: Partial<ApprovalFlowSimulationFormState> = {}
+): ApprovalFlowSimulationFormState {
+  return {
+    shouldRun:
+      parseBooleanValue(singleValue(params.simulate)) ??
+      fallback.shouldRun ??
+      DEFAULT_APPROVAL_FLOW_SIMULATION_FORM_STATE.shouldRun,
+    requesterId:
+      singleValue(params.simulationRequesterId) ??
+      fallback.requesterId ??
+      DEFAULT_APPROVAL_FLOW_SIMULATION_FORM_STATE.requesterId,
+    requesterEmployeeId:
+      singleValue(params.simulationRequesterEmployeeId) ??
+      fallback.requesterEmployeeId ??
+      DEFAULT_APPROVAL_FLOW_SIMULATION_FORM_STATE.requesterEmployeeId,
+    fieldsJson:
+      singleValue(params.simulationFieldsJson) ??
+      fallback.fieldsJson ??
+      DEFAULT_APPROVAL_FLOW_SIMULATION_FORM_STATE.fieldsJson
   };
 }
 

@@ -21,6 +21,7 @@ import {
   fixtureGetApprovalAnalytics,
   fixtureUpdateApprovalFlowDraft,
   fixtureUpdatePlan,
+  fixtureSimulateApprovalFlow,
   fixtureUpsertReportingSavedPreset,
   fixtureUpsertApprovalFlowBinding
 } from "../lib/e2e-fixtures";
@@ -139,6 +140,37 @@ test("approval-flow fixtures support draft update, publish, binding save, and ar
 
   assert.equal(archived.status, "APPROVAL_FLOW_TEMPLATE_STATUS_ARCHIVED");
   assert.equal(record?.template.status, "APPROVAL_FLOW_TEMPLATE_STATUS_ARCHIVED");
+});
+
+test("approval-flow fixtures can simulate runtime routing for a saved template", async () => {
+  const session = await fixtureLogin({
+    email: "platform.admin@hazeorin.test",
+    password: "Passw0rd!",
+    tenantId: "tenant_platform_hq"
+  });
+
+  const result = await fixtureSimulateApprovalFlow(session, {
+    tenantId: "tenant_platform_hq",
+    templateId: "flow_leave_default",
+    requesterId: "admin_user_1",
+    requesterEmployeeId: "employee_fixture_1",
+    fieldsJson: JSON.stringify({
+      country: "MY",
+      leaveTypeCode: "annual",
+      durationDays: 2
+    })
+  });
+
+  assert.equal(result.templateId, "flow_leave_default");
+  assert.equal(result.versionId, "flow_leave_v1");
+  assert.deepEqual(result.visitedNodeIds, ["start", "manager_approval", "end"]);
+  assert.equal(result.steps.length, 1);
+  assert.equal(result.steps[0]?.nodeId, "manager_approval");
+  assert.equal(
+    result.steps[0]?.executionMode,
+    "APPROVAL_NODE_EXECUTION_MODE_ALL_APPROVE"
+  );
+  assert.deepEqual(result.steps[0]?.approverIds, ["mgr_hq_1"]);
 });
 
 test("plan and subscription fixtures support create, update, launch, change, and cancel", async () => {

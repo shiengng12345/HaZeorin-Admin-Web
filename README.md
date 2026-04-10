@@ -45,14 +45,14 @@ Current status:
 - repo established
 - git remote configured
 - Next.js admin portal scaffolded
-- current implemented slices include control-hub routing, tenant diagnostics, approval-flow list/create/detail/binding management, platform reporting with backend-persisted saved views, subscription plan CRUD, and tenant subscription operations
+- current implemented slices include control-hub routing, tenant diagnostics, approval-flow list/create/detail/binding management with runtime simulation, platform reporting with backend-persisted saved views, subscription plan CRUD, and tenant subscription operations
 - repo-level Verdaccio proto consumption wired in, with current local parity verified against `@hazeorin/reporting-proto@0.1.10`
 - admin login is now guarded by a server-side user allowlist
 - `HAZEORIN_ADMIN_USER_IDS` still guards the portal entry itself, while backend admin surfaces can now also be scoped per capability through backend-side env vars
 - cookie-backed session refresh now also survives the browser dropping expired access-token cookies, as long as the refresh cookie is still valid
 - the repo now also has fixture-backed Playwright browser coverage for `login -> tenant switch -> approval-flow draft/publish/binding management -> reporting saved-view lifecycle`, `login -> tenant switch -> diagnostics workspace`, and `plan catalog -> create/update plan -> launch/change/cancel subscription`
 
-This repository now contains a working admin web application built around the existing backend gRPC contracts. The current implemented workflows are the neutral control hub, the new tenant diagnostics workspace, approval-flow list/create/detail/binding management surfaces, the tenant-scoped reporting workspace with saved-view persistence, the subscription plan catalog, and tenant subscription operations.
+This repository now contains a working admin web application built around the existing backend gRPC contracts. The current implemented workflows are the neutral control hub, the new tenant diagnostics workspace, approval-flow list/create/detail/binding management surfaces with runtime simulation, the tenant-scoped reporting workspace with saved-view persistence, the subscription plan catalog, and tenant subscription operations.
 
 Current product-model note:
 
@@ -67,14 +67,14 @@ Current product-model note:
 - repo 已建立
 - git remote 已配置
 - 已完成 Next.js admin portal 脚手架
-- 当前已落地的纵切包括 control hub 路由、tenant diagnostics、approval-flow list/create/detail/binding 管理面、带后端持久化 saved views 的 platform reporting、subscription plan CRUD 和 tenant subscription operations
+- 当前已落地的纵切包括 control hub 路由、tenant diagnostics、带 runtime simulation 的 approval-flow list/create/detail/binding 管理面、带后端持久化 saved views 的 platform reporting、subscription plan CRUD 和 tenant subscription operations
 - 已接好仓库级 Verdaccio proto 包依赖
 - admin 登录现在额外受服务端 user allowlist 保护
 - `HAZEORIN_ADMIN_USER_IDS` 仍然负责这个 portal 自己的入口 allowlist，而 backend 侧现在也已经支持按 capability 单独收口 admin 面
 - 基于 cookie 的 session refresh 现在也已经能在浏览器先清掉过期 access-token cookie 时继续恢复，不会因为 access cookie 丢失而直接强制登出
 - 现在也已经补了基于 fixture 的 Playwright 浏览器 E2E，覆盖 `login -> tenant switch -> approval-flow draft/publish/binding management -> reporting saved-view lifecycle`、`login -> tenant switch -> diagnostics workspace`，以及 `plan catalog -> create/update plan -> launch/change/cancel subscription`
 
-也就是说，这个仓库现在不只是项目边界，而是已经有一套可运行的 admin web 应用，当前第一批页面已经覆盖中性的 control hub、tenant diagnostics、approval-flow list/create/detail/binding 管理面、带 saved-view 持久化的 tenant-scoped reporting workspace、subscription plan 与 tenant subscription 管理。
+也就是说，这个仓库现在不只是项目边界，而是已经有一套可运行的 admin web 应用，当前第一批页面已经覆盖中性的 control hub、tenant diagnostics、带 runtime simulation 的 approval-flow list/create/detail/binding 管理面、带 saved-view 持久化的 tenant-scoped reporting workspace、subscription plan 与 tenant subscription 管理。
 
 当前产品模型补充说明：
 
@@ -227,7 +227,7 @@ The pages already implemented today are:
 - Tenant diagnostics
 - Approval-flow list
 - Approval-flow create form
-- Approval-flow detail / draft / binding page
+- Approval-flow detail / draft / validation / simulation / binding page
 - Plan datatable
 - Create plan form
 - Read/update plan form
@@ -249,7 +249,7 @@ The next pages should be:
 - Tenant diagnostics
 - Approval-flow list
 - Approval-flow create form
-- Approval-flow detail / draft / binding page
+- Approval-flow detail / draft / validation / simulation / binding page
 - Plan datatable
 - Create plan form
 - Read/update plan form
@@ -279,7 +279,7 @@ The current implemented admin slices are:
 
 - neutral control hub route
 - tenant diagnostics route with capability, subscription, approval-flow, and reporting posture
-- approval-flow list / create / detail / binding management
+- approval-flow list / create / detail / validation / simulation / binding management
 - tenant-scoped reporting workspace
 - reporting saved-view list / save / rename / delete backed by `reporting.v1`
 - datatable with backend-backed pagination
@@ -309,7 +309,7 @@ The current implemented admin slices are:
 
 - 中性的 control hub 首页
 - tenant diagnostics 页面，统一展示 capability、subscription、approval-flow、reporting posture
-- approval-flow list / create / detail / binding management
+- approval-flow list / create / detail / validation / simulation / binding management
 - tenant-scoped reporting workspace
 - 基于 `reporting.v1` 的 reporting saved-view 列表 / 保存 / 重命名 / 删除
 - 接后端分页的 datatable
@@ -364,7 +364,7 @@ Current test coverage:
 
 - `npm test` covers session / transport smoke checks plus fixture-state regression tests
 - `npm run proto:check` and `npm run proto:check:installed` are the explicit proto contract verification paths
-- `npm run test:e2e` runs fixture-backed admin browser flows for approval-flow management, diagnostics, and plan/subscription operations
+- `npm run test:e2e` runs fixture-backed admin browser flows for approval-flow management, approval-flow simulation, diagnostics, and plan/subscription operations
 - `npm run test:e2e` now also covers admin reporting saved-view save / rename / delete flows
 - from the workspace root, `../scripts/install-fe-playwright-browsers.sh`, `../scripts/test-fe-e2e.sh`, and `../scripts/check-fe-ui.sh` can operate both current FE web repos together
 
@@ -372,6 +372,6 @@ Current test coverage:
 
 - `npm test` 负责 session / transport smoke checks，以及 fixture 状态回归测试
 - `npm run proto:check` 和 `npm run proto:check:installed` 才是显式的 proto 契约校验入口
-- `npm run test:e2e` 现在会跑基于 fixture 的 admin 浏览器流程，覆盖 approval-flow management、diagnostics，以及 plan catalog / subscription operations
+- `npm run test:e2e` 现在会跑基于 fixture 的 admin 浏览器流程，覆盖 approval-flow management、approval-flow simulation、diagnostics，以及 plan catalog / subscription operations
 - `npm run test:e2e` 现在也已经覆盖 admin reporting saved-view 的保存 / 重命名 / 删除流程
 - 如果想从 workspace 根目录统一驱动两个 Web 前端，可以直接用 `../scripts/install-fe-playwright-browsers.sh`、`../scripts/test-fe-e2e.sh` 和 `../scripts/check-fe-ui.sh`

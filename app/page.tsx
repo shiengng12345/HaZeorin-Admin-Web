@@ -510,7 +510,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
                 <div className="workspace-list-row">
                   <div className="workspace-list-main">
                     <strong>Approval flow builder</strong>
-                    <span>Maintain templates, validate drafts, and bind them to runtime targets.</span>
+                    <span>Maintain templates, validate drafts, simulate runtime routing, and bind them to runtime targets.</span>
                   </div>
                   <Link href="/approval-flows" className="button-secondary">
                     Open

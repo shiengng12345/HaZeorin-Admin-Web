@@ -11,16 +11,19 @@ import { AdminShell } from "@/components/admin/AdminShell";
 import { ConfirmActionButton } from "@/components/common/ConfirmActionButton";
 import {
   buildApprovalFlowDetailPath,
+  defaultApprovalFlowSimulationFieldsJson,
   formatApprovalFlowTargetType,
   formatApprovalFlowTemplateStatus,
   readApprovalFlowBindingFormState,
   readApprovalFlowFormState,
+  readApprovalFlowSimulationFormState,
   sanitizeApprovalFlowReturnPath,
   summarizeApprovalFlowGraph
 } from "@/lib/approval-flows";
 import {
   getApprovalFlow,
   listApprovalFlowBindings,
+  simulateApprovalFlow,
   validateApprovalFlow
 } from "@/lib/grpc/approvalflow-client";
 import { GrpcBusinessError, GrpcTransportError } from "@/lib/grpc/errors";
@@ -60,6 +63,18 @@ function formatValidationState(valid: boolean, issueCount: number) {
   return "Pending review";
 }
 
+function formatExecutionMode(value: string) {
+  if (value === "APPROVAL_NODE_EXECUTION_MODE_ANY_ONE_APPROVE") {
+    return "Any one approve";
+  }
+
+  if (value === "APPROVAL_NODE_EXECUTION_MODE_ALL_APPROVE") {
+    return "All approve";
+  }
+
+  return "Unspecified";
+}
+
 function describeRpcError(error: unknown, fallback: string) {
   if (error instanceof GrpcBusinessError || error instanceof GrpcTransportError) {
     return error.message;
@@ -82,21 +97,48 @@ export default async function ApprovalFlowDetailPage({
   const returnTo = sanitizeApprovalFlowReturnPath(
     typeof query.returnTo === "string" ? query.returnTo : ""
   );
+  const simulationQuery = {
+    simulate: typeof query.simulate === "string" ? query.simulate : undefined,
+    simulationRequesterId:
+      typeof query.simulationRequesterId === "string"
+        ? query.simulationRequesterId
+        : undefined,
+    simulationRequesterEmployeeId:
+      typeof query.simulationRequesterEmployeeId === "string"
+        ? query.simulationRequesterEmployeeId
+        : undefined,
+    simulationFieldsJson:
+      typeof query.simulationFieldsJson === "string"
+        ? query.simulationFieldsJson
+        : undefined
+  };
   const nextPath =
     returnTo === "/approval-flows"
-      ? `/approval-flows/${templateId}`
-      : buildApprovalFlowDetailPath(templateId, { returnTo });
+      ? buildApprovalFlowDetailPath(templateId, simulationQuery)
+      : buildApprovalFlowDetailPath(templateId, { returnTo, ...simulationQuery });
+  const shouldRunSimulation = typeof query.simulate === "string" && query.simulate === "true";
+  const requestedSimulationRequesterId =
+    typeof query.simulationRequesterId === "string" ? query.simulationRequesterId : "";
+  const requestedSimulationRequesterEmployeeId =
+    typeof query.simulationRequesterEmployeeId === "string"
+      ? query.simulationRequesterEmployeeId
+      : "";
+  const requestedSimulationFieldsJson =
+    typeof query.simulationFieldsJson === "string" ? query.simulationFieldsJson : "";
 
   let flowRecord;
+  let sessionUserId = "";
   let validationError = "";
   let bindingsError = "";
+  let simulationError = "";
   let validationResult: Awaited<ReturnType<typeof validateApprovalFlow>> | null = null;
+  let simulationResult: Awaited<ReturnType<typeof simulateApprovalFlow>> | null = null;
   let bindingRows: Awaited<ReturnType<typeof listApprovalFlowBindings>>["list"] = [];
 
   try {
     const data = await executeProtectedPageCall(nextPath, async (session) => {
       const record = await getApprovalFlow(session, templateId);
-      const [validation, bindings] = await Promise.allSettled([
+      const [validation, bindings, simulation] = await Promise.allSettled([
         record.draftVersion
           ? validateApprovalFlow(session, {
               tenantId: session.tenantId,
@@ -109,17 +151,32 @@ export default async function ApprovalFlowDetailPage({
           limit: 100,
           targetType: record.template.targetType,
           includeInactive: true
-        })
+        }),
+        shouldRunSimulation && (record.draftVersion || record.publishedVersion)
+          ? simulateApprovalFlow(session, {
+              tenantId: session.tenantId,
+              templateId: record.template.id,
+              requesterId: requestedSimulationRequesterId.trim() || session.userId,
+              requesterEmployeeId:
+                requestedSimulationRequesterEmployeeId.trim() || undefined,
+              fieldsJson:
+                requestedSimulationFieldsJson.trim() ||
+                defaultApprovalFlowSimulationFieldsJson(record.template.targetType)
+            })
+          : Promise.resolve(null)
       ]);
 
       return {
         record,
         validation,
-        bindings
+        bindings,
+        simulation,
+        sessionUserId: session.userId
       };
     });
 
     flowRecord = data.record;
+    sessionUserId = data.sessionUserId;
 
     if (data.validation.status === "fulfilled") {
       validationResult = data.validation.value;
@@ -136,6 +193,15 @@ export default async function ApprovalFlowDetailPage({
       bindingsError = describeRpcError(
         data.bindings.reason,
         "Unable to load approval flow bindings."
+      );
+    }
+
+    if (data.simulation.status === "fulfilled") {
+      simulationResult = data.simulation.value;
+    } else {
+      simulationError = describeRpcError(
+        data.simulation.reason,
+        "Unable to simulate the current approval flow."
       );
     }
   } catch (error) {
@@ -170,6 +236,12 @@ export default async function ApprovalFlowDetailPage({
         conditionsJson: bindingSeed.conditionsJson
       }
     : undefined);
+  const simulationForm = readApprovalFlowSimulationFormState(query, {
+    shouldRun: shouldRunSimulation,
+    requesterId: sessionUserId,
+    requesterEmployeeId: requestedSimulationRequesterEmployeeId,
+    fieldsJson: defaultApprovalFlowSimulationFieldsJson(flowRecord.template.targetType)
+  });
   const error = typeof query.error === "string" ? query.error : "";
   const message = typeof query.message === "string" ? query.message : "";
   const graphSummary = summarizeApprovalFlowGraph(form.graphJson);
@@ -178,6 +250,20 @@ export default async function ApprovalFlowDetailPage({
     : null;
   const activeBindings = bindingRows.filter((binding) => binding.isActive).length;
   const defaultBindings = bindingRows.filter((binding) => binding.isDefault).length;
+  const matchedSimulationBinding =
+    simulationResult?.matchedBindingId
+      ? bindingRows.find((binding) => binding.id === simulationResult?.matchedBindingId) ?? null
+      : null;
+
+  if (
+    shouldRunSimulation &&
+    !simulationResult &&
+    !simulationError &&
+    !flowRecord.draftVersion &&
+    !flowRecord.publishedVersion
+  ) {
+    simulationError = "No draft or published version is available to simulate yet.";
+  }
 
   return (
     <AdminShell
@@ -515,6 +601,154 @@ export default async function ApprovalFlowDetailPage({
           )}
         </section>
 
+        <section className="panel catalog-panel">
+          <div className="panel-head catalog-head">
+            <div>
+              <p className="eyebrow">Runtime preflight</p>
+              <h2 className="panel-title">Simulation workspace</h2>
+              <p className="panel-subtitle">
+                Validation checks graph structure. Simulation checks how the current template routes
+                a requester through runtime steps and approver resolution.
+              </p>
+            </div>
+          </div>
+
+          <form method="get" action={buildApprovalFlowDetailPath(templateId)} className="field-grid">
+            <input type="hidden" name="returnTo" value={returnTo} />
+            <input type="hidden" name="simulate" value="true" />
+
+            <section className="form-section">
+              <div className="form-section-head">
+                <div>
+                  <p className="eyebrow">Requester context</p>
+                  <h3 className="form-section-title">Who is entering the flow</h3>
+                </div>
+                <p className="form-section-copy">
+                  Simulation currently runs against the saved template version, preferring the draft
+                  when one exists.
+                </p>
+              </div>
+
+              <div className="plan-form-grid">
+                <div className="field">
+                  <label htmlFor="simulationRequesterId">Requester user ID</label>
+                  <input
+                    id="simulationRequesterId"
+                    name="simulationRequesterId"
+                    type="text"
+                    defaultValue={simulationForm.requesterId}
+                    placeholder="admin_user_1"
+                    required
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="simulationRequesterEmployeeId">Requester employee ID</label>
+                  <input
+                    id="simulationRequesterEmployeeId"
+                    name="simulationRequesterEmployeeId"
+                    type="text"
+                    defaultValue={simulationForm.requesterEmployeeId}
+                    placeholder="employee_123"
+                  />
+                </div>
+                <div className="field field-span-2">
+                  <label htmlFor="simulationFieldsJson">Runtime fields JSON</label>
+                  <textarea
+                    id="simulationFieldsJson"
+                    name="simulationFieldsJson"
+                    rows={10}
+                    defaultValue={simulationForm.fieldsJson}
+                    className="code-input"
+                    spellCheck={false}
+                    required
+                  />
+                </div>
+              </div>
+            </section>
+
+            <div className="form-action-row">
+              <button type="submit" className="button-primary">
+                Run simulation
+              </button>
+            </div>
+          </form>
+
+          {simulationError ? <div className="status-banner">{simulationError}</div> : null}
+
+          {simulationResult ? (
+            <>
+              <section className="operations-summary-strip">
+                <article className="operations-summary-card">
+                  <span>Matched binding</span>
+                  <strong>{matchedSimulationBinding?.name ?? "Direct template simulation"}</strong>
+                  <small>{simulationResult.matchedBindingId || "No binding id returned."}</small>
+                </article>
+                <article className="operations-summary-card">
+                  <span>Version</span>
+                  <strong>{simulationResult.versionId || "Unavailable"}</strong>
+                  <small>{simulationResult.templateId || flowRecord.template.id}</small>
+                </article>
+                <article className="operations-summary-card">
+                  <span>Visited nodes</span>
+                  <strong>{simulationResult.visitedNodeIds.length}</strong>
+                  <small>Nodes traversed during simulation.</small>
+                </article>
+                <article className="operations-summary-card">
+                  <span>Approval steps</span>
+                  <strong>{simulationResult.steps.length}</strong>
+                  <small>{simulationResult.issues.length} issues returned.</small>
+                </article>
+              </section>
+
+              {simulationResult.steps.length > 0 ? (
+                <div className="table-card catalog-table-card">
+                  <div className="table-scroll">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Step</th>
+                          <th>Node</th>
+                          <th>Execution mode</th>
+                          <th>Approver IDs</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {simulationResult.steps.map((step) => (
+                          <tr key={`${step.nodeId}-${step.stepNo}`}>
+                            <td>{step.stepNo}</td>
+                            <td>{step.nodeId}</td>
+                            <td>{formatExecutionMode(step.executionMode)}</td>
+                            <td>{step.approverIds.join(", ") || "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="empty-state">No approval steps were produced by the current simulation.</div>
+              )}
+
+              <div className="approval-flow-code-card">
+                <div className="approval-flow-code-head">
+                  <strong>Visited node IDs</strong>
+                  <span>Traversal order returned by the simulation result</span>
+                </div>
+                <pre className="code-block">
+                  {simulationResult.visitedNodeIds.length > 0
+                    ? simulationResult.visitedNodeIds.join("\n")
+                    : "No node traversal was returned."}
+                </pre>
+              </div>
+            </>
+          ) : (
+            <div className="empty-state">
+              Run a simulation to inspect runtime routing, version usage, and approver resolution
+              for this template.
+            </div>
+          )}
+        </section>
+
         <section className="record-layout record-layout-wide">
           <section className="panel form-shell form-shell-prominent">
             <div className="panel-head form-shell-head">
@@ -730,7 +964,12 @@ export default async function ApprovalFlowDetailPage({
                                 bindingPriority: String(binding.priority),
                                 bindingIsDefault: binding.isDefault ? "true" : "false",
                                 bindingIsActive: binding.isActive ? "true" : "false",
-                                bindingConditionsJson: binding.conditionsJson
+                                bindingConditionsJson: binding.conditionsJson,
+                                simulate: simulationForm.shouldRun ? "true" : undefined,
+                                simulationRequesterId: simulationForm.requesterId,
+                                simulationRequesterEmployeeId:
+                                  simulationForm.requesterEmployeeId,
+                                simulationFieldsJson: simulationForm.fieldsJson
                               })}
                               className="button-secondary compact"
                             >

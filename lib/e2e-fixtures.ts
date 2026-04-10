@@ -74,6 +74,22 @@ type FixtureApprovalFlowValidationIssue = {
   edgeId: string;
 };
 
+type FixtureApprovalFlowSimulationStep = {
+  stepNo: number;
+  nodeId: string;
+  executionMode: ApprovalNodeExecutionMode;
+  approverIds: string[];
+};
+
+type FixtureApprovalFlowSimulationResult = {
+  matchedBindingId: string;
+  templateId: string;
+  versionId: string;
+  visitedNodeIds: string[];
+  steps: FixtureApprovalFlowSimulationStep[];
+  issues: FixtureApprovalFlowValidationIssue[];
+};
+
 type FixtureOverview = {
   totalDepartments: number;
   activeDepartments: number;
@@ -309,6 +325,213 @@ function parseRefreshToken(refreshToken: string) {
 
 function cloneGraphJson(graphJson: string) {
   return JSON.stringify(JSON.parse(graphJson), null, 2);
+}
+
+function parseFixtureJsonObject(value: string) {
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeFixtureNodeKind(node: Record<string, any>) {
+  const raw = String(node.kind ?? node.type ?? "").trim().toUpperCase();
+
+  if (raw.includes("START")) {
+    return "START";
+  }
+  if (raw.includes("END")) {
+    return "END";
+  }
+  if (raw.includes("CC")) {
+    return "CC";
+  }
+  if (raw.includes("WAIT")) {
+    return "WAIT";
+  }
+  if (raw.includes("WEBHOOK")) {
+    return "WEBHOOK";
+  }
+  if (raw.includes("CONDITION")) {
+    return "CONDITION";
+  }
+  if (
+    raw.includes("APPROVER") ||
+    raw.includes("APPROVAL") ||
+    raw === "APPROVAL"
+  ) {
+    return "APPROVAL";
+  }
+
+  return "UNKNOWN";
+}
+
+function fixtureNodeEdges(graph: Record<string, any>, nodeId: string) {
+  const edges = Array.isArray(graph.edges) ? graph.edges : [];
+  return edges.filter((edge) => {
+    const candidate = edge as Record<string, unknown>;
+    return (
+      candidate.from === nodeId ||
+      candidate.sourceNodeId === nodeId ||
+      candidate.source === nodeId
+    );
+  });
+}
+
+function fixtureNextNodeId(graph: Record<string, any>, nodeId: string) {
+  const outgoing = fixtureNodeEdges(graph, nodeId).map((edge, index) => ({
+    edge: edge as Record<string, unknown>,
+    index
+  }));
+
+  if (outgoing.length === 0) {
+    return "";
+  }
+
+  outgoing.sort((left, right) => {
+    const leftPriority = Number(left.edge.priority ?? 0);
+    const rightPriority = Number(right.edge.priority ?? 0);
+
+    return leftPriority - rightPriority || left.index - right.index;
+  });
+
+  const first = outgoing[0]?.edge ?? {};
+  return String(first.to ?? first.targetNodeId ?? first.target ?? "");
+}
+
+function fixtureFirstNodeByKind(graph: Record<string, any>, kind: string) {
+  const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+
+  return (
+    nodes.find((node) => normalizeFixtureNodeKind(node as Record<string, unknown>) === kind) ??
+    null
+  ) as Record<string, unknown> | null;
+}
+
+function fixtureResolvedApproverIds(
+  session: FixtureSession,
+  payload: {
+    requesterId: string;
+    requesterEmployeeId?: string;
+    node: Record<string, any>;
+    fields: Record<string, any>;
+  }
+) {
+  const configuredIds =
+    (Array.isArray(payload.node.config?.userIds)
+      ? payload.node.config.userIds
+      : undefined) ??
+    (typeof payload.node.config?.userId === "string"
+      ? [payload.node.config.userId]
+      : undefined) ??
+    (Array.isArray(payload.node.config?.approverIds)
+      ? payload.node.config.approverIds
+      : undefined);
+
+  const cleanedConfigured = (configuredIds ?? [])
+    .filter((entry: unknown): entry is string => typeof entry === "string")
+    .map((entry: string) => entry.trim())
+    .filter(Boolean);
+
+  if (cleanedConfigured.length > 0) {
+    return cleanedConfigured;
+  }
+
+  const fieldManagerId = [
+    payload.fields.managerId,
+    payload.fields.managerUserId,
+    payload.fields.approverId,
+    payload.fields.approverUserId
+  ]
+    .filter((entry: unknown): entry is string => typeof entry === "string")
+    .map((entry: string) => entry.trim())
+    .find(Boolean);
+
+  if (fieldManagerId) {
+    return [fieldManagerId];
+  }
+
+  const tenantManagers = state().reportingByTenant[session.tenantId]?.overview.managers ?? [];
+  const tenantManagerId = tenantManagers[0]?.managerId?.trim();
+
+  if (tenantManagerId) {
+    return [tenantManagerId];
+  }
+
+  if (payload.requesterEmployeeId?.trim()) {
+    return [payload.requesterEmployeeId.trim()];
+  }
+
+  return [payload.requesterId.trim() || session.userId];
+}
+
+function fixtureApprovalExecutionMode(node: Record<string, any>) {
+  const raw = String(node.config?.executionMode ?? "").trim().toUpperCase();
+
+  if (raw.includes("ANY_ONE")) {
+    return "APPROVAL_NODE_EXECUTION_MODE_ANY_ONE_APPROVE";
+  }
+
+  return "APPROVAL_NODE_EXECUTION_MODE_ALL_APPROVE";
+}
+
+function fixtureSimulationWarningIssue(message: string): FixtureApprovalFlowValidationIssue {
+  return {
+    code: "SIMULATION_WARNING",
+    message,
+    nodeId: "",
+    edgeId: ""
+  };
+}
+
+function parseJsonObject<T>(value: string) {
+  return JSON.parse(value) as T;
+}
+
+function readFixtureSimulationGraph(version: FixtureApprovalFlowVersion) {
+  return parseJsonObject<{
+    nodes?: Array<{
+      id?: string;
+      type?: string;
+      kind?: string;
+      executionMode?: ApprovalNodeExecutionMode;
+      config?: {
+        executionMode?: "ALL_APPROVE" | "ANY_ONE_APPROVE" | ApprovalNodeExecutionMode;
+      };
+    }>;
+  }>(version.compiledJson || version.graphJson);
+}
+
+function resolveFixtureExecutionMode(node: {
+  executionMode?: ApprovalNodeExecutionMode;
+  config?: {
+    executionMode?: "ALL_APPROVE" | "ANY_ONE_APPROVE" | ApprovalNodeExecutionMode;
+  };
+}) {
+  const raw = node.executionMode ?? node.config?.executionMode;
+
+  if (
+    raw === "ANY_ONE_APPROVE" ||
+    raw === "APPROVAL_NODE_EXECUTION_MODE_ANY_ONE_APPROVE"
+  ) {
+    return "APPROVAL_NODE_EXECUTION_MODE_ANY_ONE_APPROVE" as const;
+  }
+
+  return "APPROVAL_NODE_EXECUTION_MODE_ALL_APPROVE" as const;
+}
+
+function defaultFixtureApproverIds(tenantId: string) {
+  if (tenantId === TENANT_HQ) {
+    return ["mgr_hq_1"];
+  }
+
+  if (tenantId === TENANT_OPS) {
+    return ["mgr_ops_1"];
+  }
+
+  return [USER_ID];
 }
 
 function initialState(): FixtureState {
@@ -1347,6 +1570,140 @@ export async function fixtureValidateApprovalFlow(payload: {
   return {
     isValid: issues.length === 0,
     compiledJson,
+    issues
+  };
+}
+
+export async function fixtureSimulateApprovalFlow(
+  session: FixtureSession,
+  payload: {
+    tenantId: string;
+    templateId: string;
+    fieldsJson: string;
+    requesterId: string;
+    requesterEmployeeId?: string;
+  }
+): Promise<FixtureApprovalFlowSimulationResult> {
+  if (payload.tenantId !== session.tenantId) {
+    throw new Error("Fixture approval flow tenant mismatch.");
+  }
+
+  const template = requireTemplateForTenant(session, payload.templateId);
+  const version = findDraftVersion(template.id) ?? findPublishedVersion(template.id);
+
+  if (!version) {
+    return {
+      matchedBindingId: "",
+      templateId: template.id,
+      versionId: "",
+      visitedNodeIds: [],
+      steps: [],
+      issues: [
+        fixtureSimulationWarningIssue(
+          "No draft or published version is available for simulation."
+        )
+      ]
+    };
+  }
+
+  const graph = parseFixtureJsonObject(version.compiledJson || version.graphJson);
+
+  if (!graph) {
+    return {
+      matchedBindingId: "",
+      templateId: template.id,
+      versionId: version.id,
+      visitedNodeIds: [],
+      steps: [],
+      issues: [
+        {
+          code: "INVALID_JSON",
+          message: "Graph JSON could not be parsed.",
+          nodeId: "",
+          edgeId: ""
+        }
+      ]
+    };
+  }
+
+  const fields = parseFixtureJsonObject(payload.fieldsJson) ?? {};
+  const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+  const nodeMap = new Map<string, Record<string, any>>();
+
+  for (const node of nodes) {
+    const id = String((node as Record<string, any>).id ?? "").trim();
+    if (id) {
+      nodeMap.set(id, node as Record<string, any>);
+    }
+  }
+
+  const startNode = fixtureFirstNodeByKind(graph, "START") ?? nodes[0] ?? null;
+  const visitedNodeIds: string[] = [];
+  const steps: FixtureApprovalFlowSimulationStep[] = [];
+  const issues: FixtureApprovalFlowValidationIssue[] = [];
+  let currentNodeId = String((startNode as Record<string, any> | null)?.id ?? "").trim();
+  let stepNo = 0;
+  let guard = 0;
+
+  while (currentNodeId && guard < 100) {
+    guard += 1;
+    const node = nodeMap.get(currentNodeId);
+
+    if (!node) {
+      issues.push(
+        fixtureSimulationWarningIssue(
+          `Simulation stopped because node \"${currentNodeId}\" could not be resolved.`
+        )
+      );
+      break;
+    }
+
+    visitedNodeIds.push(currentNodeId);
+
+    const kind = normalizeFixtureNodeKind(node);
+
+    if (kind === "END") {
+      break;
+    }
+
+    if (kind === "APPROVAL") {
+      stepNo += 1;
+      const approverIds = fixtureResolvedApproverIds(session, {
+        requesterId: payload.requesterId,
+        requesterEmployeeId: payload.requesterEmployeeId,
+        node,
+        fields
+      });
+
+      steps.push({
+        stepNo,
+        nodeId: currentNodeId,
+        executionMode: fixtureApprovalExecutionMode(node),
+        approverIds
+      });
+    }
+
+    const nextNodeId = fixtureNextNodeId(graph, currentNodeId);
+
+    if (!nextNodeId) {
+      break;
+    }
+
+    currentNodeId = nextNodeId;
+  }
+
+  if (guard >= 100) {
+    issues.push(
+      fixtureSimulationWarningIssue("Simulation stopped after reaching the traversal guard.")
+    );
+  }
+
+  return {
+    matchedBindingId: "",
+    templateId: template.id,
+    versionId: version.id,
+    visitedNodeIds,
+    steps,
     issues
   };
 }
