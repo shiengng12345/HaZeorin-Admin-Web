@@ -16,7 +16,7 @@ export default defineConfig({
     trace: "on-first-retry"
   },
   webServer: {
-    command: `env -u NO_COLOR NEXT_DISABLE_WEBPACK_CACHE=1 HAZEORIN_E2E_FIXTURE_MODE=1 HAZEORIN_ADMIN_USER_IDS=admin_user_1 sh -c "rm -rf .next && npm run dev -- --port ${PORT}"`,
+    command: `env -u NO_COLOR HAZEORIN_E2E_FIXTURE_MODE=1 HAZEORIN_ADMIN_USER_IDS=admin_user_1 npm run start -- --port ${PORT}`,
     url: `${baseURL}/login`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000

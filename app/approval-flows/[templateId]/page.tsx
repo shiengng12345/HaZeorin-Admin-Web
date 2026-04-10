@@ -11,6 +11,7 @@ import { AdminShell } from "@/components/admin/AdminShell";
 import { ConfirmActionButton } from "@/components/common/ConfirmActionButton";
 import {
   buildApprovalFlowDetailPath,
+  compareApprovalFlowGraphs,
   defaultApprovalFlowSimulationFieldsJson,
   formatApprovalFlowTargetType,
   formatApprovalFlowTemplateStatus,
@@ -248,6 +249,10 @@ export default async function ApprovalFlowDetailPage({
   const publishedGraphSummary = flowRecord.publishedVersion
     ? summarizeApprovalFlowGraph(flowRecord.publishedVersion.graphJson)
     : null;
+  const graphComparison = compareApprovalFlowGraphs(
+    flowRecord.draftVersion?.graphJson ?? "",
+    flowRecord.publishedVersion?.graphJson ?? ""
+  );
   const activeBindings = bindingRows.filter((binding) => binding.isActive).length;
   const defaultBindings = bindingRows.filter((binding) => binding.isDefault).length;
   const matchedSimulationBinding =
@@ -598,6 +603,113 @@ export default async function ApprovalFlowDetailPage({
             </>
           ) : (
             <div className="empty-state">No draft version is available to validate yet.</div>
+          )}
+        </section>
+
+        <section className="panel catalog-panel">
+          <div className="panel-head catalog-head">
+            <div>
+              <p className="eyebrow">Version comparison</p>
+              <h2 className="panel-title">Draft vs published comparison</h2>
+              <p className="panel-subtitle">
+                Compare the editable draft against the current published graph. This stays within
+                the loaded template record and does not require backend changes.
+              </p>
+            </div>
+          </div>
+
+          {flowRecord.draftVersion || flowRecord.publishedVersion ? (
+            <>
+              <section className="operations-summary-strip">
+                <article className="operations-summary-card">
+                  <span>Draft version</span>
+                  <strong>{flowRecord.draftVersion ? `v${flowRecord.draftVersion.versionNo}` : "None"}</strong>
+                  <small>{flowRecord.draftVersion?.id || "No draft version id."}</small>
+                </article>
+                <article className="operations-summary-card">
+                  <span>Published version</span>
+                  <strong>{flowRecord.publishedVersion ? `v${flowRecord.publishedVersion.versionNo}` : "None"}</strong>
+                  <small>{flowRecord.publishedVersion?.id || "No published version id."}</small>
+                </article>
+                <article className="operations-summary-card">
+                  <span>Node delta</span>
+                  <strong>
+                    {graphComparison.nodeDelta > 0
+                      ? `+${graphComparison.nodeDelta}`
+                      : String(graphComparison.nodeDelta)}
+                  </strong>
+                  <small>
+                    {graphComparison.draft.nodeCount} draft nodes vs {graphComparison.published.nodeCount} published nodes
+                  </small>
+                </article>
+                <article className="operations-summary-card">
+                  <span>Edge delta</span>
+                  <strong>
+                    {graphComparison.edgeDelta > 0
+                      ? `+${graphComparison.edgeDelta}`
+                      : String(graphComparison.edgeDelta)}
+                  </strong>
+                  <small>
+                    {graphComparison.draft.edgeCount} draft edges vs {graphComparison.published.edgeCount} published edges
+                  </small>
+                </article>
+              </section>
+
+              <div className="table-card catalog-table-card">
+                <div className="table-scroll">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Snapshot</th>
+                        <th>Version</th>
+                        <th>Nodes</th>
+                        <th>Edges</th>
+                        <th>Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>Draft</td>
+                        <td>{flowRecord.draftVersion ? `v${flowRecord.draftVersion.versionNo}` : "None"}</td>
+                        <td>{graphComparison.draft.nodeCount}</td>
+                        <td>{graphComparison.draft.edgeCount}</td>
+                        <td>
+                          {graphComparison.draftOnlyNodeIds.length || graphComparison.draftOnlyEdgeIds.length
+                            ? `${graphComparison.draftOnlyNodeIds.length} draft-only nodes, ${graphComparison.draftOnlyEdgeIds.length} draft-only edges`
+                            : "No structural differences from published"}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td>Published</td>
+                        <td>
+                          {flowRecord.publishedVersion ? `v${flowRecord.publishedVersion.versionNo}` : "None"}
+                        </td>
+                        <td>{graphComparison.published.nodeCount}</td>
+                        <td>{graphComparison.published.edgeCount}</td>
+                        <td>
+                          {graphComparison.publishedOnlyNodeIds.length || graphComparison.publishedOnlyEdgeIds.length
+                            ? `${graphComparison.publishedOnlyNodeIds.length} published-only nodes, ${graphComparison.publishedOnlyEdgeIds.length} published-only edges`
+                            : "No structural differences from draft"}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {graphComparison.hasChanges ? (
+                <div className="status-banner">
+                  Draft and published graphs differ structurally. Review the node and edge counts
+                  before publishing.
+                </div>
+              ) : (
+                <div className="success-banner">
+                  Draft and published graphs are structurally aligned.
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="empty-state">No version data is available yet for this template.</div>
           )}
         </section>
 

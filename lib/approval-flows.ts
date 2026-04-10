@@ -46,6 +46,25 @@ export type ApprovalFlowSimulationFormState = {
   fieldsJson: string;
 };
 
+export type ApprovalFlowGraphSnapshot = {
+  nodeCount: number;
+  edgeCount: number;
+  nodeIds: string[];
+  edgeIds: string[];
+};
+
+export type ApprovalFlowGraphComparison = {
+  draft: ApprovalFlowGraphSnapshot;
+  published: ApprovalFlowGraphSnapshot;
+  hasChanges: boolean;
+  nodeDelta: number;
+  edgeDelta: number;
+  draftOnlyNodeIds: string[];
+  publishedOnlyNodeIds: string[];
+  draftOnlyEdgeIds: string[];
+  publishedOnlyEdgeIds: string[];
+};
+
 export const DEFAULT_APPROVAL_FLOW_GRAPH_JSON = JSON.stringify(
   {
     nodes: [
@@ -465,16 +484,70 @@ export function summarizeApprovalFlowGraph(graphJson: string) {
       edges?: unknown[];
     };
 
+    const nodeIds = (Array.isArray(parsed.nodes) ? parsed.nodes : [])
+      .map((entry) => {
+        if (entry && typeof entry === "object" && "id" in entry) {
+          return String((entry as { id?: unknown }).id ?? "").trim();
+        }
+
+        return "";
+      })
+      .filter(Boolean);
+
+    const edgeIds = (Array.isArray(parsed.edges) ? parsed.edges : [])
+      .map((entry) => {
+        if (entry && typeof entry === "object" && "id" in entry) {
+          return String((entry as { id?: unknown }).id ?? "").trim();
+        }
+
+        return "";
+      })
+      .filter(Boolean);
+
     return {
-      nodeCount: Array.isArray(parsed.nodes) ? parsed.nodes.length : 0,
-      edgeCount: Array.isArray(parsed.edges) ? parsed.edges.length : 0
+      nodeCount: nodeIds.length,
+      edgeCount: edgeIds.length,
+      nodeIds,
+      edgeIds
     };
   } catch {
     return {
       nodeCount: 0,
-      edgeCount: 0
+      edgeCount: 0,
+      nodeIds: [],
+      edgeIds: []
     };
   }
+}
+
+export function compareApprovalFlowGraphs(
+  draftGraphJson: string,
+  publishedGraphJson: string
+): ApprovalFlowGraphComparison {
+  const draft = summarizeApprovalFlowGraph(draftGraphJson);
+  const published = summarizeApprovalFlowGraph(publishedGraphJson);
+  const draftOnlyNodeIds = draft.nodeIds.filter((id) => !published.nodeIds.includes(id));
+  const publishedOnlyNodeIds = published.nodeIds.filter((id) => !draft.nodeIds.includes(id));
+  const draftOnlyEdgeIds = draft.edgeIds.filter((id) => !published.edgeIds.includes(id));
+  const publishedOnlyEdgeIds = published.edgeIds.filter((id) => !draft.edgeIds.includes(id));
+
+  return {
+    draft,
+    published,
+    hasChanges:
+      draft.nodeCount !== published.nodeCount ||
+      draft.edgeCount !== published.edgeCount ||
+      draftOnlyNodeIds.length > 0 ||
+      publishedOnlyNodeIds.length > 0 ||
+      draftOnlyEdgeIds.length > 0 ||
+      publishedOnlyEdgeIds.length > 0,
+    nodeDelta: draft.nodeCount - published.nodeCount,
+    edgeDelta: draft.edgeCount - published.edgeCount,
+    draftOnlyNodeIds,
+    publishedOnlyNodeIds,
+    draftOnlyEdgeIds,
+    publishedOnlyEdgeIds
+  };
 }
 
 function parsePositiveInt(value: string | undefined, fallback: number) {
