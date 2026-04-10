@@ -13,6 +13,7 @@ import { buildHomePath } from "@/lib/session-core";
 
 type ShellView =
   | "home"
+  | "diagnostics"
   | "approval-flows"
   | "approval-flows-new"
   | "plans"
@@ -119,6 +120,12 @@ export async function AdminShell({
                       <small>Neutral admin entry</small>
                     </span>
                   </Link>
+                  <Link href="/diagnostics" className={sidebarLinkClass(activeView === "diagnostics")}>
+                    <span className="sidebar-link-copy">
+                      <strong>Tenant diagnostics</strong>
+                      <small>Cross-module tenant snapshot</small>
+                    </span>
+                  </Link>
                 </div>
               </section>
 
@@ -212,15 +219,6 @@ export async function AdminShell({
                 </section>
               ) : null}
 
-              <section className="sidebar-section">
-                <p className="sidebar-section-label">Planned</p>
-                <div className="sidebar-group">
-                  <span className="sidebar-link sidebar-link-muted">
-                    Tenant diagnostics
-                    <small>Planned</small>
-                  </span>
-                </div>
-              </section>
             </nav>
           </div>
 
@@ -315,6 +313,12 @@ export async function AdminShell({
                   className={navLinkClass(activeView === "home")}
                 >
                   Home
+                </Link>
+                <Link
+                  href="/diagnostics"
+                  className={navLinkClass(activeView === "diagnostics")}
+                >
+                  Diagnostics
                 </Link>
                 {canManageApprovalFlows ? (
                   <>
