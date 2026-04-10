@@ -18,6 +18,7 @@ import {
   fixturePublishApprovalFlow,
   fixtureChangeSubscriptionPlan,
   fixtureCancelSubscription,
+  fixtureGetApprovalAnalytics,
   fixtureUpdateApprovalFlowDraft,
   fixtureUpdatePlan,
   fixtureUpsertReportingSavedPreset,
@@ -246,4 +247,31 @@ test("reporting preset fixtures support save, replace, list, and delete", async 
   const deleted = await fixtureDeleteReportingSavedPreset(session, updated.id);
   assert.equal(deleted, true);
   assert.deepEqual(await fixtureListReportingSavedPresets(session), []);
+});
+
+test("reporting analytics fixtures expose approved and rejected counts", async () => {
+  const opsSession = await fixtureLogin({
+    email: "platform.admin@hazeorin.test",
+    password: "Passw0rd!",
+    tenantId: "tenant_malaysia_ops"
+  });
+  const hqSession = await fixtureLogin({
+    email: "platform.admin@hazeorin.test",
+    password: "Passw0rd!",
+    tenantId: "tenant_platform_hq"
+  });
+
+  const opsAnalytics = await fixtureGetApprovalAnalytics(opsSession);
+  assert.equal(opsAnalytics.approvedRequests, 2);
+  assert.equal(opsAnalytics.rejectedRequests, 1);
+  assert.equal(opsAnalytics.approvalFunnelRate, 66.66666666666666);
+  assert.equal(opsAnalytics.targets[0]?.approvedRequests, 2);
+  assert.equal(opsAnalytics.targets[0]?.rejectedRequests, 1);
+
+  const hqAnalytics = await fixtureGetApprovalAnalytics(hqSession);
+  assert.equal(hqAnalytics.approvedRequests, 4);
+  assert.equal(hqAnalytics.rejectedRequests, 1);
+  assert.equal(hqAnalytics.approvalFunnelRate, 80);
+  assert.equal(hqAnalytics.targets[0]?.approvedRequests, 4);
+  assert.equal(hqAnalytics.targets[0]?.rejectedRequests, 1);
 });

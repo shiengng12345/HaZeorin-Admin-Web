@@ -1,0 +1,84 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    env:
+      HAZEORIN_NPM_REGISTRY: http://localhost:4873/
+
+    services:
+      verdaccio:
+        image: verdaccio/verdaccio:5
+        ports:
+          - 4873:4873
+
+    steps:
+      - name: Checkout admin repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Wait for Verdaccio
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf "$HAZEORIN_NPM_REGISTRY-/ping" >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Verdaccio did not become ready in time" >&2
+          exit 1
+
+      - name: Checkout proto repo
+        uses: actions/checkout@v4
+        with:
+          repository: shiengng12345/HaZeorin-Proto
+          path: HaZeorin-Proto
+          fetch-depth: 1
+          token: ${{ secrets.HAZEORIN_PROTO_CHECKOUT_TOKEN || github.token }}
+
+      - name: Prepare and publish proto packages
+        working-directory: HaZeorin-Proto
+        run: |
+          npm ci
+          npm run sync:packages
+          git diff --exit-code -- .
+          test -z "$(git status --short --untracked-files=all)"
+          npm run pack:all
+          npx -y npm-cli-login \
+            -u ci-user \
+            -p ci-password \
+            -e ci-user@example.com \
+            -r "$HAZEORIN_NPM_REGISTRY" \
+            -s @hazeorin
+          npm publish --workspaces --registry "$HAZEORIN_NPM_REGISTRY" --access public
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check installed proto packages
+        run: npm run proto:check:installed
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run admin e2e smoke
+        run: npx playwright test e2e/admin-workspace.spec.ts

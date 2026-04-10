@@ -141,12 +141,20 @@ export default async function ReportingPage({ searchParams }: ReportingPageProps
             <article className="metric-card">
               <span>Queue volume</span>
               <strong>{formatCount(approvalAnalytics?.totalRequests ?? 0)}</strong>
-              <small>{formatReportingWindow(query.window)} approval window.</small>
+              <small>
+                {formatCount(approvalAnalytics?.approvedRequests ?? 0)} approved /{" "}
+                {formatCount(approvalAnalytics?.rejectedRequests ?? 0)} rejected.
+              </small>
             </article>
             <article className="metric-card">
               <span>Average resolution</span>
               <strong>{formatHours(approvalAnalytics?.averageResolutionHours ?? 0)}</strong>
               <small>{formatHours(approvalAnalytics?.averageStepActionHours ?? 0)} per step action.</small>
+            </article>
+            <article className="metric-card">
+              <span>Approval funnel</span>
+              <strong>{formatPercent(approvalAnalytics?.approvalFunnelRate ?? 0)}</strong>
+              <small>Approved requests as a share of resolved approval requests.</small>
             </article>
           </div>
         </section>

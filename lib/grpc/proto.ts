@@ -29,8 +29,8 @@ function resolveProtoRoot(packageName: string, entryFile: string) {
 
   const candidates = [
     configuredProtoRoot || null,
-    localRepoProtoRoot,
-    packageProtoRoot
+    packageProtoRoot,
+    localRepoProtoRoot
   ].filter((value): value is string => Boolean(value));
 
   for (const protoRoot of candidates) {

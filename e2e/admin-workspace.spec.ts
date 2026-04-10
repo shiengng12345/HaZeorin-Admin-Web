@@ -71,6 +71,17 @@ test("login, switch tenant, create an approval flow, and review tenant reporting
   await expect(page).toHaveURL(/\/reporting$/);
   await expect(page.getByRole("heading", { name: "Tenant reporting workspace" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Saved views" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Target mix" })).toBeVisible();
+  const targetMixRow = page
+    .locator("section.panel.catalog-panel")
+    .filter({ has: page.getByRole("heading", { name: "Target mix" }) })
+    .locator("tbody tr")
+    .first();
+  await expect(targetMixRow.locator("td").nth(0)).toContainText("Claim");
+  await expect(targetMixRow.locator("td").nth(1)).toContainText("6");
+  await expect(targetMixRow.locator("td").nth(2)).toContainText("3");
+  await expect(targetMixRow.locator("td").nth(3)).toContainText("2");
+  await expect(targetMixRow.locator("td").nth(4)).toContainText("1");
   await page.getByRole("button", { name: "Save current view" }).click();
   await expect(page).toHaveURL(/\/reporting\?.*message=Reporting\+view\+saved\./);
   await expect(page.getByText("Reporting view saved.")).toBeVisible();

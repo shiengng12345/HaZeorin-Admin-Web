@@ -52,8 +52,8 @@ async function exists(relativePath) {
 function buildCandidateRoots(packageRoot) {
   return [
     configuredProtoRoot || null,
-    siblingProtoRoot,
-    path.join(repoRoot, packageRoot)
+    path.join(repoRoot, packageRoot),
+    siblingProtoRoot
   ].filter(Boolean);
 }
 

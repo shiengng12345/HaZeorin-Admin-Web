@@ -124,6 +124,9 @@ type FixtureApprovalAnalytics = {
   reassignedAssignments: number;
   averageResolutionHours: number;
   averageStepActionHours: number;
+  approvedRequests: number;
+  rejectedRequests: number;
+  approvalFunnelRate: number;
   pendingAges: Array<{
     key: string;
     label: string;
@@ -524,6 +527,9 @@ function initialState(): FixtureState {
           reassignedAssignments: 1,
           averageResolutionHours: 6.5,
           averageStepActionHours: 2.1,
+          approvedRequests: 4,
+          rejectedRequests: 1,
+          approvalFunnelRate: 80,
           pendingAges: [{ key: "lt_24h", label: "< 24h", pendingRequests: 2 }],
           targets: [
             {
@@ -617,6 +623,9 @@ function initialState(): FixtureState {
           reassignedAssignments: 0,
           averageResolutionHours: 3.8,
           averageStepActionHours: 1.4,
+          approvedRequests: 2,
+          rejectedRequests: 1,
+          approvalFunnelRate: 66.66666666666666,
           pendingAges: [{ key: "lt_24h", label: "< 24h", pendingRequests: 4 }],
           targets: [
             {
@@ -1479,6 +1488,9 @@ export async function fixtureGetApprovalAnalytics(session: FixtureSession) {
       reassignedAssignments: 0,
       averageResolutionHours: 0,
       averageStepActionHours: 0,
+      approvedRequests: 0,
+      rejectedRequests: 0,
+      approvalFunnelRate: 0,
       pendingAges: [],
       targets: [],
       executionModes: []

@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "prebuild": "npm run proto:check:installed",
+    "pretest": "npm run proto:check:installed",
     "start": "next start",
     "proto:check": "node scripts/check-proto-packages.mjs",
     "proto:check:installed": "node scripts/check-proto-packages.mjs --installed",

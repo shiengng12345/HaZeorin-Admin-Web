@@ -130,6 +130,9 @@ const ApprovalAnalyticsSchema = z.object({
   reassignedAssignments: z.coerce.number().nonnegative().default(0),
   averageResolutionHours: z.coerce.number().nonnegative().default(0),
   averageStepActionHours: z.coerce.number().nonnegative().default(0),
+  approvedRequests: z.coerce.number().nonnegative().default(0),
+  rejectedRequests: z.coerce.number().nonnegative().default(0),
+  approvalFunnelRate: z.coerce.number().nonnegative().default(0),
   pendingAges: z.array(ApprovalPendingAgeBucketSchema).default([]),
   targets: z.array(ApprovalTargetAnalyticsBucketSchema).default([]),
   executionModes: z.array(ApprovalExecutionAnalyticsBucketSchema).default([])
@@ -207,6 +210,17 @@ export type ReportingQueueTrendBucket = z.infer<typeof QueueTrendBucketSchema>;
 export type ReportingApprovalAnalytics = z.infer<typeof ApprovalAnalyticsSchema>;
 export type ReportingSavedPreset = z.infer<typeof ReportingSavedPresetSchema>;
 
+function requireResponsePayload<T>(
+  payload: T | null | undefined,
+  message: string
+) {
+  if (payload == null) {
+    throw new GrpcBusinessError(message, "STATUS_CODE_INTERNAL");
+  }
+
+  return payload;
+}
+
 function ensureSuccess(
   payload: { baseResponse?: { status: string; message: string } },
   fallbackMessage: string
@@ -255,26 +269,9 @@ export async function frontendGetOverview(
   const parsed = FrontendGetOverviewResponseSchema.parse(response);
   ensureSuccess(parsed, "Unable to load reporting overview.");
 
-  return (
-    parsed.data?.overview ?? {
-      totalDepartments: 0,
-      activeDepartments: 0,
-      totalEmployees: 0,
-      activeEmployees: 0,
-      probationEmployees: 0,
-      inactiveEmployees: 0,
-      pendingLeaveRequests: 0,
-      approvedLeaveRequests: 0,
-      rejectedLeaveRequests: 0,
-      pendingClaimRequests: 0,
-      approvedClaimRequests: 0,
-      rejectedClaimRequests: 0,
-      pendingApprovals: 0,
-      departments: [],
-      managers: [],
-      workforce: [],
-      queues: []
-    }
+  return requireResponsePayload(
+    parsed.data?.overview,
+    "Reporting overview payload was missing from the backend response."
   );
 }
 
@@ -315,18 +312,9 @@ export async function frontendGetApprovalAnalytics(
   const parsed = FrontendGetApprovalAnalyticsResponseSchema.parse(response);
   ensureSuccess(parsed, "Unable to load approval analytics.");
 
-  return (
-    parsed.data?.analytics ?? {
-      totalRequests: 0,
-      pendingRequests: 0,
-      activeAssignments: 0,
-      reassignedAssignments: 0,
-      averageResolutionHours: 0,
-      averageStepActionHours: 0,
-      pendingAges: [],
-      targets: [],
-      executionModes: []
-    }
+  return requireResponsePayload(
+    parsed.data?.analytics,
+    "Approval analytics payload was missing from the backend response."
   );
 }
 
