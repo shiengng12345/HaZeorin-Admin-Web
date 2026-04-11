@@ -24,6 +24,7 @@ import {
 import {
   getApprovalFlow,
   listApprovalFlowBindings,
+  listApprovalFlowVersionHistory,
   simulateApprovalFlow,
   validateApprovalFlow
 } from "@/lib/grpc/approvalflow-client";
@@ -74,6 +75,20 @@ function formatExecutionMode(value: string) {
   }
 
   return "Unspecified";
+}
+
+function formatHistoryTimestamp(value: string) {
+  if (!value) {
+    return "—";
+  }
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return parsed.toISOString().replace("T", " ").slice(0, 16);
 }
 
 function describeRpcError(error: unknown, fallback: string) {
@@ -131,15 +146,17 @@ export default async function ApprovalFlowDetailPage({
   let sessionUserId = "";
   let validationError = "";
   let bindingsError = "";
+  let historyError = "";
   let simulationError = "";
   let validationResult: Awaited<ReturnType<typeof validateApprovalFlow>> | null = null;
   let simulationResult: Awaited<ReturnType<typeof simulateApprovalFlow>> | null = null;
   let bindingRows: Awaited<ReturnType<typeof listApprovalFlowBindings>>["list"] = [];
+  let versionHistoryRows: Awaited<ReturnType<typeof listApprovalFlowVersionHistory>> = [];
 
   try {
     const data = await executeProtectedPageCall(nextPath, async (session) => {
       const record = await getApprovalFlow(session, templateId);
-      const [validation, bindings, simulation] = await Promise.allSettled([
+      const [validation, bindings, history, simulation] = await Promise.allSettled([
         record.draftVersion
           ? validateApprovalFlow(session, {
               tenantId: session.tenantId,
@@ -153,6 +170,7 @@ export default async function ApprovalFlowDetailPage({
           targetType: record.template.targetType,
           includeInactive: true
         }),
+        listApprovalFlowVersionHistory(session, record.template.id),
         shouldRunSimulation && (record.draftVersion || record.publishedVersion)
           ? simulateApprovalFlow(session, {
               tenantId: session.tenantId,
@@ -171,6 +189,7 @@ export default async function ApprovalFlowDetailPage({
         record,
         validation,
         bindings,
+        history,
         simulation,
         sessionUserId: session.userId
       };
@@ -194,6 +213,15 @@ export default async function ApprovalFlowDetailPage({
       bindingsError = describeRpcError(
         data.bindings.reason,
         "Unable to load approval flow bindings."
+      );
+    }
+
+    if (data.history.status === "fulfilled") {
+      versionHistoryRows = data.history.value;
+    } else {
+      historyError = describeRpcError(
+        data.history.reason,
+        "Unable to load approval flow version history."
       );
     }
 
@@ -521,6 +549,76 @@ export default async function ApprovalFlowDetailPage({
               </ul>
             </section>
           </aside>
+        </section>
+
+        <section className="panel catalog-panel">
+          <div className="panel-head catalog-head">
+            <div>
+              <p className="eyebrow">Version history</p>
+              <h2 className="panel-title">Publish audit trail</h2>
+              <p className="panel-subtitle">
+                Read-only history from saved versions and publish audits. Use this to confirm which
+                version is draft, which one is currently published, and who published it.
+              </p>
+            </div>
+          </div>
+
+          {historyError ? <div className="status-banner">{historyError}</div> : null}
+
+          {versionHistoryRows.length > 0 ? (
+            <div className="table-card catalog-table-card">
+              <div className="table-scroll">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Version</th>
+                      <th>Status</th>
+                      <th>Created</th>
+                      <th>Published</th>
+                      <th>Version ID</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {versionHistoryRows.map((entry) => {
+                      const version = entry.version;
+                      const isCurrentPublished =
+                        version?.id === flowRecord.template.publishedVersionId;
+
+                      return (
+                        <tr key={version?.id ?? `${entry.createdAt}-${entry.createdBy}`}>
+                          <td>{version ? `v${version.versionNo}` : "Unknown"}</td>
+                          <td>
+                            {isCurrentPublished
+                              ? "Current published"
+                              : version?.isPublished
+                                ? "Previously published"
+                                : "Draft"}
+                          </td>
+                          <td>
+                            {formatHistoryTimestamp(entry.createdAt)}
+                            <br />
+                            <small>{entry.createdBy || "Unknown creator"}</small>
+                          </td>
+                          <td>
+                            {entry.publishedAt ? formatHistoryTimestamp(entry.publishedAt) : "—"}
+                            <br />
+                            <small>{entry.publishedBy || "Not published"}</small>
+                          </td>
+                          <td>{version?.id || "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="empty-state">
+              {historyError
+                ? "Version history could not be loaded."
+                : "No version history exists for this template yet."}
+            </div>
+          )}
         </section>
 
         <section className="panel catalog-panel">

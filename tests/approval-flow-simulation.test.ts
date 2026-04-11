@@ -70,7 +70,7 @@ test("fixture approval flow simulation resolves approvers from runtime fields", 
   });
 
   assert.equal(simulation.templateId, "flow_claim_ops");
-  assert.equal(simulation.versionId, "flow_claim_v1");
+  assert.equal(simulation.versionId, "flow_claim_v3");
   assert.deepEqual(simulation.visitedNodeIds, ["start", "manager_approval", "end"]);
   assert.equal(simulation.steps.length, 1);
   assert.equal(simulation.steps[0]?.nodeId, "manager_approval");

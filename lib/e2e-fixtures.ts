@@ -52,6 +52,10 @@ type FixtureApprovalFlowVersion = {
   isPublished: boolean;
   graphJson: string;
   compiledJson: string;
+  createdBy: string;
+  createdAt: string;
+  publishedBy: string;
+  publishedAt: string;
 };
 
 type FixtureApprovalFlowBinding = {
@@ -538,8 +542,9 @@ function initialState(): FixtureState {
   const leaveTemplateId = "flow_leave_default";
   const leaveDraftVersionId = "flow_leave_v1";
   const claimTemplateId = "flow_claim_ops";
-  const claimDraftVersionId = "flow_claim_v1";
+  const claimPreviousVersionId = "flow_claim_v1";
   const claimPublishedVersionId = "flow_claim_v2";
+  const claimDraftVersionId = "flow_claim_v3";
 
   return {
     users: [
@@ -648,15 +653,23 @@ function initialState(): FixtureState {
         versionNo: 1,
         isPublished: false,
         graphJson: BASE_GRAPH_JSON,
-        compiledJson: cloneGraphJson(BASE_GRAPH_JSON)
+        compiledJson: cloneGraphJson(BASE_GRAPH_JSON),
+        createdBy: USER_ID,
+        createdAt: fixedIso("2026-03-01T09:00:00+08:00"),
+        publishedBy: "",
+        publishedAt: ""
       },
       {
-        id: claimDraftVersionId,
+        id: claimPreviousVersionId,
         templateId: claimTemplateId,
         versionNo: 1,
-        isPublished: false,
+        isPublished: true,
         graphJson: BASE_GRAPH_JSON,
-        compiledJson: cloneGraphJson(BASE_GRAPH_JSON)
+        compiledJson: cloneGraphJson(BASE_GRAPH_JSON),
+        createdBy: USER_ID,
+        createdAt: fixedIso("2026-03-05T09:00:00+08:00"),
+        publishedBy: USER_ID,
+        publishedAt: fixedIso("2026-03-05T10:00:00+08:00")
       },
       {
         id: claimPublishedVersionId,
@@ -664,7 +677,23 @@ function initialState(): FixtureState {
         versionNo: 2,
         isPublished: true,
         graphJson: BASE_GRAPH_JSON,
-        compiledJson: cloneGraphJson(BASE_GRAPH_JSON)
+        compiledJson: cloneGraphJson(BASE_GRAPH_JSON),
+        createdBy: USER_ID,
+        createdAt: fixedIso("2026-03-06T09:00:00+08:00"),
+        publishedBy: USER_ID,
+        publishedAt: fixedIso("2026-03-06T10:00:00+08:00")
+      },
+      {
+        id: claimDraftVersionId,
+        templateId: claimTemplateId,
+        versionNo: 3,
+        isPublished: false,
+        graphJson: BASE_GRAPH_JSON,
+        compiledJson: cloneGraphJson(BASE_GRAPH_JSON),
+        createdBy: USER_ID,
+        createdAt: fixedIso("2026-03-06T10:01:00+08:00"),
+        publishedBy: "",
+        publishedAt: ""
       }
     ],
     bindings: [
@@ -1007,18 +1036,37 @@ function requireSubscriptionForTenant(session: FixtureSession, subscriptionId: s
 
 function findDraftVersion(templateId: string) {
   return (
-    state().versions.find(
-      (entry) => entry.templateId === templateId && entry.isPublished === false
-    ) ?? null
+    state()
+      .versions.filter(
+        (entry) => entry.templateId === templateId && entry.isPublished === false
+      )
+      .sort(compareFixtureApprovalFlowVersionsDesc)[0] ?? null
   );
 }
 
 function findPublishedVersion(templateId: string) {
+  const template = state().templates.find((entry) => entry.id === templateId);
+
+  if (template?.publishedVersionId) {
+    return state().versions.find((entry) => entry.id === template.publishedVersionId) ?? null;
+  }
+
   return (
-    state().versions.find(
-      (entry) => entry.templateId === templateId && entry.isPublished === true
-    ) ?? null
+    state()
+      .versions.filter((entry) => entry.templateId === templateId && entry.isPublished)
+      .sort(compareFixtureApprovalFlowVersionsDesc)[0] ?? null
   );
+}
+
+function compareFixtureApprovalFlowVersionsDesc(
+  left: FixtureApprovalFlowVersion,
+  right: FixtureApprovalFlowVersion
+) {
+  const versionDelta = right.versionNo - left.versionNo;
+  if (versionDelta !== 0) {
+    return versionDelta;
+  }
+  return right.createdAt.localeCompare(left.createdAt);
 }
 
 function filterTemplates(
@@ -1062,12 +1110,10 @@ function buildRecord(templateId: string) {
     return null;
   }
 
-  const versions = state().versions.filter((entry) => entry.templateId === templateId);
-
   return {
     template,
-    draftVersion: versions.find((entry) => !entry.isPublished) ?? null,
-    publishedVersion: versions.find((entry) => entry.isPublished) ?? null
+    draftVersion: findDraftVersion(templateId),
+    publishedVersion: findPublishedVersion(templateId)
   };
 }
 
@@ -1246,6 +1292,29 @@ export async function fixtureGetApprovalFlow(
   return record;
 }
 
+export async function fixtureListApprovalFlowVersionHistory(
+  session: FixtureSession,
+  templateId: string
+) {
+  const record = buildRecord(templateId.trim());
+
+  if (!record || record.template.tenantId !== session.tenantId) {
+    return [];
+  }
+
+  return state()
+    .versions
+    .filter((version) => version.templateId === record.template.id)
+    .sort(compareFixtureApprovalFlowVersionsDesc)
+    .map((version) => ({
+      version,
+      createdBy: version.createdBy,
+      createdAt: version.createdAt,
+      publishedBy: version.publishedBy,
+      publishedAt: version.publishedAt
+    }));
+}
+
 export async function fixtureCreateApprovalFlow(
   session: FixtureSession,
   payload: {
@@ -1277,7 +1346,11 @@ export async function fixtureCreateApprovalFlow(
     versionNo: 1,
     isPublished: false,
     graphJson: payload.graphJson,
-    compiledJson: cloneGraphJson(payload.graphJson)
+    compiledJson: cloneGraphJson(payload.graphJson),
+    createdBy: session.userId,
+    createdAt: fixedIso("2026-04-01T09:00:00+08:00"),
+    publishedBy: "",
+    publishedAt: ""
   };
 
   state().templates.unshift(template);
@@ -1475,7 +1548,11 @@ export async function fixtureUpdateApprovalFlowDraft(
       versionNo: Math.max(template.latestVersionNo, 1),
       isPublished: false,
       graphJson: payload.graphJson,
-      compiledJson: cloneGraphJson(payload.graphJson)
+      compiledJson: cloneGraphJson(payload.graphJson),
+      createdBy: session.userId,
+      createdAt: fixedIso("2026-04-01T09:00:00+08:00"),
+      publishedBy: "",
+      publishedAt: ""
     };
     state().versions.push(draftVersion);
   } else {
@@ -1507,24 +1584,31 @@ export async function fixturePublishApprovalFlow(
     graphJson: draftVersion.graphJson
   });
 
-  const previousPublishedIndex = state().versions.findIndex(
-    (entry) => entry.templateId === template.id && entry.isPublished === true
-  );
+  const publishedVersion = draftVersion;
+  publishedVersion.isPublished = true;
+  publishedVersion.compiledJson = validation.compiledJson || cloneGraphJson(draftVersion.graphJson);
+  publishedVersion.publishedBy = session.userId;
+  publishedVersion.publishedAt = fixedIso("2026-04-02T10:30:00+08:00");
 
-  if (previousPublishedIndex >= 0) {
-    state().versions.splice(previousPublishedIndex, 1);
-  }
-
-  const publishedVersion: FixtureApprovalFlowVersion = {
+  const nextDraftVersion: FixtureApprovalFlowVersion = {
     id: nextVersionId(),
     templateId: template.id,
-    versionNo: template.latestVersionNo + 1,
-    isPublished: true,
-    graphJson: draftVersion.graphJson,
-    compiledJson: validation.compiledJson || cloneGraphJson(draftVersion.graphJson)
+    versionNo: publishedVersion.versionNo + 1,
+    isPublished: false,
+    graphJson: publishedVersion.graphJson,
+    compiledJson: publishedVersion.compiledJson,
+    createdBy: session.userId,
+    createdAt: fixedIso("2026-04-02T10:31:00+08:00"),
+    publishedBy: "",
+    publishedAt: ""
   };
 
-  state().versions.push(publishedVersion);
+  state().versions.push(nextDraftVersion);
+  for (const binding of state().bindings) {
+    if (binding.tenantId === session.tenantId && binding.templateId === template.id) {
+      binding.versionId = publishedVersion.id;
+    }
+  }
   template.status = "APPROVAL_FLOW_TEMPLATE_STATUS_PUBLISHED";
   template.latestVersionNo = publishedVersion.versionNo;
   template.publishedVersionId = publishedVersion.id;
@@ -1532,7 +1616,7 @@ export async function fixturePublishApprovalFlow(
   return {
     template,
     publishedVersion,
-    draftVersion,
+    draftVersion: nextDraftVersion,
     issues: validation.issues
   };
 }

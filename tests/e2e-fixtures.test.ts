@@ -11,6 +11,7 @@ import {
   fixtureGetPlan,
   fixtureListApprovalFlowBindings,
   fixtureListApprovalFlows,
+  fixtureListApprovalFlowVersionHistory,
   fixtureListPlans,
   fixtureListReportingSavedPresets,
   fixtureListSubscriptions,
@@ -140,6 +141,25 @@ test("approval-flow fixtures support draft update, publish, binding save, and ar
 
   assert.equal(archived.status, "APPROVAL_FLOW_TEMPLATE_STATUS_ARCHIVED");
   assert.equal(record?.template.status, "APPROVAL_FLOW_TEMPLATE_STATUS_ARCHIVED");
+});
+
+test("approval-flow fixtures expose version history and publish audits", async () => {
+  const session = await fixtureLogin({
+    email: "platform.admin@hazeorin.test",
+    password: "Passw0rd!",
+    tenantId: "tenant_malaysia_ops"
+  });
+
+  const history = await fixtureListApprovalFlowVersionHistory(session, "flow_claim_ops");
+
+  assert.equal(history.length, 3);
+  assert.equal(history[0]?.version.versionNo, 3);
+  assert.equal(history[0]?.publishedBy, "");
+  assert.equal(history[1]?.version.versionNo, 2);
+  assert.equal(history[1]?.publishedBy, "admin_user_1");
+  assert.match(history[1]?.publishedAt ?? "", /^2026-03-06T02:00:00/);
+  assert.equal(history[2]?.version.versionNo, 1);
+  assert.equal(history[2]?.publishedBy, "admin_user_1");
 });
 
 test("approval-flow fixtures can simulate runtime routing for a saved template", async () => {

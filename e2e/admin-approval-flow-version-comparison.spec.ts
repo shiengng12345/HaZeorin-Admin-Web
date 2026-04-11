@@ -25,7 +25,7 @@ test("approval-flow detail version comparison shows draft and published snapshot
       .locator(".operations-summary-card")
       .filter({ hasText: "Draft version" })
       .locator("strong")
-      .filter({ hasText: /^v1$/ })
+      .filter({ hasText: /^v3$/ })
   ).toBeVisible();
   await expect(
     comparisonPanel
@@ -39,4 +39,17 @@ test("approval-flow detail version comparison shows draft and published snapshot
   const rows = comparisonPanel.locator("tbody tr");
   await expect(rows.nth(0).locator("td").nth(0)).toContainText("Draft");
   await expect(rows.nth(1).locator("td").nth(0)).toContainText("Published");
+
+  const historyPanel = page
+    .locator("section.panel.catalog-panel")
+    .filter({ has: page.getByRole("heading", { name: "Publish audit trail" }) });
+  await expect(page.getByRole("heading", { name: "Publish audit trail" })).toBeVisible();
+  await expect(historyPanel.getByRole("columnheader", { name: "Version", exact: true })).toBeVisible();
+  const historyRows = historyPanel.locator("tbody tr");
+  await expect(historyRows.nth(0).locator("td").nth(0)).toContainText("v3");
+  await expect(historyRows.nth(0).locator("td").nth(1)).toContainText("Draft");
+  await expect(historyRows.nth(1).locator("td").nth(0)).toContainText("v2");
+  await expect(historyRows.nth(1).locator("td").nth(1)).toContainText("Current published");
+  await expect(historyRows.nth(2).locator("td").nth(0)).toContainText("v1");
+  await expect(historyRows.nth(2).locator("td").nth(1)).toContainText("Previously published");
 });

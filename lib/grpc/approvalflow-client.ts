@@ -9,6 +9,7 @@ import {
   fixtureGetApprovalFlow,
   fixtureListApprovalFlowBindings,
   fixtureListApprovalFlows,
+  fixtureListApprovalFlowVersionHistory,
   fixturePublishApprovalFlow,
   fixtureSimulateApprovalFlow,
   fixtureUpdateApprovalFlowDraft,
@@ -92,6 +93,14 @@ const ApprovalFlowVersionSchema = z.object({
   compiledJson: z.string().default("")
 });
 
+const ApprovalFlowVersionHistoryEntrySchema = z.object({
+  version: ApprovalFlowVersionSchema.optional(),
+  createdBy: z.string().default(""),
+  createdAt: z.string().default(""),
+  publishedBy: z.string().default(""),
+  publishedAt: z.string().default("")
+});
+
 const ApprovalFlowBindingSchema = z.object({
   id: z.string(),
   tenantId: z.string(),
@@ -147,6 +156,15 @@ const PaginatedApprovalFlowsResponseSchema = z.object({
 const SingleApprovalFlowResponseSchema = z.object({
   baseResponse: BaseResponseSchema.optional(),
   data: ApprovalFlowRecordSchema.optional()
+});
+
+const ListApprovalFlowVersionHistoryResponseSchema = z.object({
+  baseResponse: BaseResponseSchema.optional(),
+  data: z
+    .object({
+      list: z.array(ApprovalFlowVersionHistoryEntrySchema).default([])
+    })
+    .optional()
 });
 
 const CreateApprovalFlowResponseSchema = z.object({
@@ -233,6 +251,9 @@ export type ApprovalFlowTargetType = z.infer<typeof ApprovalFlowTargetTypeSchema
 export type ApprovalFlowTemplateStatus = z.infer<typeof ApprovalFlowTemplateStatusSchema>;
 export type ApprovalFlowTemplate = z.infer<typeof ApprovalFlowTemplateSchema>;
 export type ApprovalFlowVersion = z.infer<typeof ApprovalFlowVersionSchema>;
+export type ApprovalFlowVersionHistoryEntry = z.infer<
+  typeof ApprovalFlowVersionHistoryEntrySchema
+>;
 export type ApprovalFlowBinding = z.infer<typeof ApprovalFlowBindingSchema>;
 export type ApprovalFlowValidationIssue = z.infer<typeof ApprovalFlowValidationIssueSchema>;
 export type ApprovalFlowValidationResult = NonNullable<
@@ -379,6 +400,26 @@ export async function getApprovalFlow(session: AuthSession, templateId: string) 
   ensureSuccess(parsed, "Unable to load the selected approval flow.");
 
   return buildRecord(parsed, "Unable to load the selected approval flow.");
+}
+
+export async function listApprovalFlowVersionHistory(
+  session: AuthSession,
+  templateId: string
+) {
+  if (isE2EFixtureMode()) {
+    return fixtureListApprovalFlowVersionHistory(session, templateId);
+  }
+
+  const response = await invokeUnary<unknown>(
+    getApprovalFlowClient(),
+    "frontendListApprovalFlowVersionHistory",
+    { templateId },
+    metadata(session)
+  );
+  const parsed = ListApprovalFlowVersionHistoryResponseSchema.parse(response);
+  ensureSuccess(parsed, "Unable to load approval flow version history.");
+
+  return parsed.data?.list ?? [];
 }
 
 export async function createApprovalFlow(
